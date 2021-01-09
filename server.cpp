@@ -27,14 +27,13 @@ class Server {
     std::set<User> users{db.getAllUsers()};
     std::deque<std::thread> threads;
 
-    auto findUser(const std::string &username);
+    auto findUser(const std::string &username) noexcept;
 
     auto connectionMonitor() -> void;
 
     auto attachClient(zmqpp::socket &clientSocket, const std::string &clientEndPoint) -> User;
 
-    // TODO: should be noexcept
-    auto clientMonitor(const std::string &clientEndPoint) -> void;
+    auto clientMonitor(const std::string &clientEndPoint) noexcept -> void;
 
 public:
     static auto get() -> Server &;
@@ -45,7 +44,7 @@ public:
 };
 
 
-auto Server::findUser(const std::string &username) {
+auto Server::findUser(const std::string &username) noexcept {
     return std::find_if(users.begin(), users.end(), [&username](auto user) -> bool {
         return user.username == username;
     });
@@ -72,7 +71,6 @@ auto Server::connectionMonitor() -> void {
     }
     std::cout << "connectionMonitor exiting, new connections won't be maintained" << std::endl;
 }
-
 
 
 auto Server::attachClient(zmqpp::socket &clientSocket, const std::string &clientEndPoint) -> User {
@@ -125,7 +123,7 @@ auto Server::attachClient(zmqpp::socket &clientSocket, const std::string &client
 }
 
 
-auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
+auto Server::clientMonitor(const std::string &clientEndPoint) noexcept -> void {
     std::cout << "new clientMonitor started, monitoring " << clientEndPoint << " port" << std::endl;
 
     try {
@@ -138,7 +136,13 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
             receiveMessage(clientSocket, request);
             switch (request.messageType) {
                 case MessageType::CreateMessage: {
-                    db.createMessage(request.message.name, user.id, time(nullptr), request.message.buffer);
+                    try {
+                        db.createMessage(request.message.name, user.id, time(nullptr), request.message.buffer);
+                    } catch (std::runtime_error &exception) {
+                        std::cerr << exception.what() << std::endl;
+                        sendMessage(clientSocket, Message(MessageType::ServerError));
+                        continue;
+                    }
                     break;
                 }
                 case MessageType::Update: {
@@ -151,7 +155,14 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
                         request.messageType = MessageType::ClientError;
                         break;
                     }
-                    request.message.vector = db.getChatsByTime(it->id, request.message.time);
+
+                    try {
+                        request.message.vector = db.getChatsByTime(it->id, request.message.time);
+                    } catch (std::runtime_error &exception) {
+                        std::cerr << exception.what() << std::endl;
+                        sendMessage(clientSocket, Message(MessageType::ServerError));
+                        continue;
+                    }
                     request.message.time = time(nullptr);
                     break;
                 }
@@ -169,11 +180,23 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
                         }
                     }
 
-                    db.createChat(request.message.buffer, user.id, userIds);
+                    try {
+                        db.createChat(request.message.buffer, user.id, userIds);
+                    } catch (std::runtime_error &exception) {
+                        std::cerr << exception.what() << std::endl;
+                        sendMessage(clientSocket, Message(MessageType::ServerError));
+                        continue;
+                    }
                     break;
                 }
                 case MessageType::GetAllMessagesFromChat: {
-                    request.message.vector = db.getAllMessagesFromChat(request.message.name, user.id);
+                    try {
+                        request.message.vector = db.getAllMessagesFromChat(request.message.name, user.id);
+                    } catch (std::runtime_error &exception) {
+                        std::cerr << exception.what() << std::endl;
+                        sendMessage(clientSocket, Message(MessageType::ServerError));
+                        continue;
+                    }
                     break;
                 }
                 case MessageType::InviteUserToChat: {
@@ -183,7 +206,13 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
                         break;
                     }
 
-                    db.inviteUserToChat(request.message.name, user.id, it->id, request.message.flag);
+                    try {
+                        db.inviteUserToChat(request.message.name, user.id, it->id, request.message.flag);
+                    } catch (std::runtime_error &exception) {
+                        std::cerr << exception.what() << std::endl;
+                        sendMessage(clientSocket, Message(MessageType::ServerError));
+                        continue;
+                    }
                     break;
                 }
                 default:

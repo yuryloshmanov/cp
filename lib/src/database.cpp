@@ -5,12 +5,12 @@
 #include "../database.hpp"
 
 
-auto bind(sqlite3_stmt *&sqlite3Stmt, int32_t index, const char *value) -> bool {
+auto bind(sqlite3_stmt *&sqlite3Stmt, int32_t index, const char *value) noexcept -> bool {
     return sqlite3_bind_text(sqlite3Stmt, index, value, -1, nullptr) == SQLITE_OK;
 }
 
 
-auto bind(sqlite3_stmt *&sqlite3Stmt, int32_t index, int32_t value) -> bool {
+auto bind(sqlite3_stmt *&sqlite3Stmt, int32_t index, int32_t value) noexcept -> bool {
     return sqlite3_bind_int(sqlite3Stmt, index, value) == SQLITE_OK;
 }
 
@@ -19,7 +19,7 @@ template<class T, size_t index = 0>
 auto bindTuple(
         sqlite3_stmt *&sqlite3Stmt,
         const T &tuple
-) -> typename std::enable_if<index >= std::tuple_size<T>::value, bool>::type {
+) noexcept -> typename std::enable_if<index >= std::tuple_size<T>::value, bool>::type {
     return true;
 }
 
@@ -28,18 +28,18 @@ template<class T, size_t index = 0>
 auto bindTuple(
         sqlite3_stmt *stmt,
         const T &tuple
-) -> typename std::enable_if<index < std::tuple_size<T>::value, bool>::type {
+) noexcept -> typename std::enable_if<index < std::tuple_size<T>::value, bool>::type {
     auto value = std::get<index>(tuple);
     return bind(stmt, index + 1, value) && bindTuple<T, index + 1>(stmt, tuple);
 }
 
 
-auto Database::executeSqlQuery(const std::string &sql) -> bool {
+auto Database::executeSqlQuery(const std::string &sql) noexcept -> bool {
     return sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &err_msg) == SQLITE_OK;
 }
 
 
-auto Database::getFormattedDatetime(const time_t rawTime) -> std::string {
+auto Database::getFormattedDatetime(const time_t rawTime) noexcept -> std::string {
     time_t _rawTime = rawTime;
     struct tm *currentTime;
     time(&_rawTime);
@@ -53,13 +53,13 @@ auto Database::getFormattedDatetime(const time_t rawTime) -> std::string {
 }
 
 
-auto Database::prepareStatement(const char *sqlQuery) -> bool {
+auto Database::prepareStatement(const char *sqlQuery) noexcept -> bool {
     return sqlite3_prepare_v2(db, sqlQuery, -1, &stmt, nullptr) == SQLITE_OK;
 }
 
 
 template<class... Args>
-auto Database::bindStatement(Args... args) -> bool {
+auto Database::bindStatement(Args... args) noexcept -> bool {
     return bindTuple(stmt, std::make_tuple(args...));
 }
 
@@ -365,7 +365,9 @@ auto Database::getChatName(const int chatId) -> std::string {
 
 auto Database::createUser(const std::string &username, const std::string &password) -> void {
     std::lock_guard lockGuard(mutex);
-    executeSqlQuery("INSERT INTO Users(Username, Password) VALUES('" + username + "', '" + password + "');");
+    if (!executeSqlQuery("INSERT INTO Users(Username, Password) VALUES('" + username + "', '" + password + "');")) {
+        throw std::runtime_error("sqlite3_exec error");
+    }
 }
 
 
@@ -407,7 +409,9 @@ Database::Database(const std::string &path) {
                       "CREATE TABLE IF NOT EXISTS ChatsInfo(ChatId INT, UserId INT, AllowedRawTime INT);"
                       "CREATE TABLE IF NOT EXISTS Messages(Id INTEGER PRIMARY KEY AUTOINCREMENT, ChatId INT, SenderId INT, RawTime INT, Time DATETIME, Data TEXT);";
 
-    executeSqlQuery(sql);
+    if (!executeSqlQuery(sql)) {
+        throw std::runtime_error("sqlite3_exec error");
+    }
 }
 
 

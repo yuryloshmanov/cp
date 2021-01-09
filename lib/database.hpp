@@ -20,19 +20,18 @@ class Database {
     sqlite3_stmt *stmt{};
     std::mutex mutex{};
 
-    // TODO: add noexcept
     // doesn't lock, must be locked outside
-    auto prepareStatement(const char *sqlQuery) -> bool;
+    auto prepareStatement(const char *sqlQuery) noexcept -> bool;
 
     // doesn't lock, must be locked outside
     template<class... Args>
-    auto bindStatement(Args... args) -> bool;
+    auto bindStatement(Args... args) noexcept -> bool;
 
     // doesn't lock
-    static auto getFormattedDatetime(time_t rawTime) -> std::string;
+    static auto getFormattedDatetime(time_t rawTime) noexcept -> std::string;
 
     // explicitly locks
-    auto executeSqlQuery(const std::string &sql) -> bool;
+    auto executeSqlQuery(const std::string &sql) noexcept -> bool;
 
     // explicitly locks
     auto getUserPassword(const std::string &username) -> std::string;

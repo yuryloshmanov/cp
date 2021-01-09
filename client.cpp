@@ -25,26 +25,24 @@ constexpr int32_t receiveTimeout = 3 * 1000;
 
 
 auto updater(zmqpp::socket &clientSocket) -> void {
-    time_t lastChatsUpdateTime{0};
+    static time_t lastChatsUpdateTime{0};
 
-    while (true) {
-        auto request = Message(MessageType::UpdateChats, MessageData(lastChatsUpdateTime, username, ""));
-        mutex.lock();
-        if (!sendMessage(clientSocket, request)) {
-            break;
-        }
-        if (!receiveMessage(clientSocket, request)) {
-            break;
-        }
-        mutex.unlock();
+    try {
+        while (true) {
+            auto request = Message(MessageType::UpdateChats, MessageData(lastChatsUpdateTime, username, ""));
+            mutex.lock();
+            sendMessage(clientSocket, request);
+            receiveMessage(clientSocket, request);
+            mutex.unlock();
 
-        for (const auto &chat: request.message.vector) {
-            chats.push_back(chat);
-        }
-        lastChatsUpdateTime = request.message.time;
+            for (const auto &chat: request.message.vector) {
+                chats.push_back(chat);
+            }
+            lastChatsUpdateTime = request.message.time;
 
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-    }
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+        }
+    } catch (...) {}
 
     std::cout << "updater stopped" << std::endl;
 }
@@ -114,9 +112,7 @@ auto connectToServer(zmqpp::socket &serverSocket, zmqpp::socket &clientSocket) -
 
     if (requestType == MessageType::SignIn) {
         auto request = Message(MessageType::SignIn, MessageData(username, password));
-        if (!sendMessage(clientSocket, request)) {
-            throw std::runtime_error("send timeout");
-        }
+        sendMessage(clientSocket, request);
 
         Message response;
         receiveMessage(clientSocket, response);
