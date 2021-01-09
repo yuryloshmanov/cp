@@ -222,8 +222,11 @@ auto main() -> int {
                 receiveMessage(clientSocket, message);
                 mutex.unlock();
 
-                for (const auto &messageText: message.message.vector) {
-                    std::cout << messageText << std::endl;
+//                for (const auto &messageText: message.message.vector) {
+//                    std::cout << messageText << std::endl;
+//                }
+                for (const auto &chatMessage: message.message.chatMessages) {
+                    std::cout << chatMessage << std::endl;
                 }
             } else if (command == 5) {
                 std::string chatName, user;

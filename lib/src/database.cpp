@@ -241,45 +241,6 @@ auto Database::inviteUserToChat(
 }
 
 
-auto Database::getAllMessagesFromChat(const std::string &chatName, const int32_t userId) -> std::vector<std::string> {
-    const auto chatId = getChatId(chatName);
-    const auto sqlQueryForRawTime = "SELECT AllowedRawTime FROM ChatsInfo WHERE ChatId = ? AND UserId = ?";
-
-    std::lock_guard lockGuard(mutex);
-    if (!prepareStatement(sqlQueryForRawTime)) {
-        throw std::runtime_error("sqlite3_prepare_v2 error");
-    }
-
-    if (!bindStatement(chatId, userId)) {
-        throw std::runtime_error("sqlite_bind error");
-    }
-
-    int32_t allowedRawTime;
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
-        allowedRawTime = sqlite3_column_int(stmt, 0);
-    } else {
-        throw std::logic_error("Chat don't exists");
-    }
-
-    const auto sqlQueryForMessages = "SELECT Data FROM Messages WHERE ChatId = ? AND RawTime >= ? ORDER BY RawTime";
-
-    if (!prepareStatement(sqlQueryForMessages)) {
-        throw std::runtime_error("sqlite3_prepare_v2 error");
-    }
-
-    if (!bindStatement(chatId, allowedRawTime)) {
-        throw std::runtime_error("sqlite_bind error");
-    }
-
-    std::vector<std::string> messages;
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        messages.emplace_back(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
-    }
-
-    return messages;
-}
-
-
 auto Database::createMessage(
         const std::string &chatName,
         const int32_t senderId,
@@ -420,4 +381,68 @@ Database::~Database() {
         sqlite3_free(err_msg);
     }
     sqlite3_close(db);
+}
+
+auto
+Database::getAllMessagesFromChat(const std::string &chatName, int32_t userId) -> std::vector<ChatMessage> {
+    const auto chatId = getChatId(chatName);
+    const auto sqlQueryForRawTime = "SELECT AllowedRawTime FROM ChatsInfo WHERE ChatId = ? AND UserId = ?";
+
+    std::lock_guard lockGuard(mutex);
+    if (!prepareStatement(sqlQueryForRawTime)) {
+        throw std::runtime_error("sqlite3_prepare_v2 error");
+    }
+
+    if (!bindStatement(chatId, userId)) {
+        throw std::runtime_error("sqlite_bind error");
+    }
+
+    int32_t allowedRawTime;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        allowedRawTime = sqlite3_column_int(stmt, 0);
+    } else {
+        throw std::logic_error("Chat don't exists");
+    }
+
+    const auto sqlQueryForMessages = "SELECT SenderId, Time, Data FROM Messages WHERE ChatId = ? AND RawTime >= ? ORDER BY RawTime";
+
+    if (!prepareStatement(sqlQueryForMessages)) {
+        throw std::runtime_error("sqlite3_prepare_v2 error");
+    }
+
+    if (!bindStatement(chatId, allowedRawTime)) {
+        throw std::runtime_error("sqlite_bind error");
+    }
+
+    std::vector<ChatMessage> messages;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        messages.emplace_back(
+                reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1)),
+                std::to_string(sqlite3_column_int(stmt, 0)),
+                reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2))
+
+        );
+    }
+
+    for (auto &chatMessage: messages) {
+        chatMessage.username = getUsername(std::stoi(chatMessage.username));
+    }
+
+    return messages;
+}
+
+auto Database::getUsername(const int id) -> std::string {
+    const auto sqlQuery = "SELECT Username FROM Users WHERE Id = ?";
+
+    if (!prepareStatement(sqlQuery)) {
+        throw std::runtime_error("sqlite3_prepare_v2 error");
+    }
+    if (!bindStatement(id)) {
+        throw std::runtime_error("sqlite3_bind_text error");
+    }
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        return std::string(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+    } else {
+        throw std::runtime_error("sqlite3_step error");
+    }
 }

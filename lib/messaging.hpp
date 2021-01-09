@@ -10,6 +10,7 @@
 
 
 #include "auth.hpp"
+#include "chatMessage.hpp"
 
 
 enum class MessageType {
@@ -25,13 +26,14 @@ enum class MessageType {
     ServerError
 };
 
+
 struct MessageData {
     int32_t time{};
     std::string name{};
     std::string buffer{};
     bool flag{};
     std::vector<std::string> vector{};
-
+    std::vector<ChatMessage> chatMessages{};
 
     MessageData() = default;
 
@@ -41,7 +43,7 @@ struct MessageData {
     MessageData(std::string username, std::string buffer) : name(std::move(username)),
                                                             buffer(std::move(buffer)) {}
 
-    MSGPACK_DEFINE (time, name, buffer, flag, vector)
+    MSGPACK_DEFINE (time, name, buffer, flag, vector, chatMessages)
 };
 
 

@@ -191,7 +191,7 @@ auto Server::clientMonitor(const std::string &clientEndPoint) noexcept -> void {
                 }
                 case MessageType::GetAllMessagesFromChat: {
                     try {
-                        request.message.vector = db.getAllMessagesFromChat(request.message.name, user.id);
+                        request.message.chatMessages = db.getAllMessagesFromChat(request.message.name, user.id);
                     } catch (std::runtime_error &exception) {
                         std::cerr << exception.what() << std::endl;
                         sendMessage(clientSocket, Message(MessageType::ServerError));

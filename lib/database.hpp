@@ -7,10 +7,11 @@
 #include <string>
 #include <vector>
 #include <sqlite3.h>
-
+#include <msgpack.hpp>
 
 #include "user.hpp"
 #include "auth.hpp"
+#include "chatMessage.hpp"
 
 
 // Thread-safe, based on sqlite3
@@ -45,20 +46,8 @@ class Database {
     // implicitly locks by getChatId
     auto isChatExists(const std::string &chatName) -> bool;
 
-    auto getUsername(const int id) -> std::string {
-        std::string sql = "SELECT Username FROM Users WHERE Id = ?";
-        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-            throw std::runtime_error("sqlite3_prepare_v2 error");
-        }
-        if (sqlite3_bind_int(stmt, 1, id) != SQLITE_OK) {
-            throw std::runtime_error("sqlite3_bind_text error");
-        }
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            return std::string(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
-        } else {
-            return {};
-        }
-    }
+    // doesn't lock, must be locked outside
+    auto getUsername(const int id) -> std::string;
 
 public:
     Database();
@@ -92,7 +81,7 @@ public:
     auto createMessage(const std::string &chatName, int32_t senderId, time_t rawTime, const std::string &data) -> bool;
 
     // explicitly and implicitly locks
-    auto getAllMessagesFromChat(const std::string &chatName, int32_t userId) -> std::vector<std::string>;
+    auto getAllMessagesFromChat(const std::string &chatName, int32_t userId) -> std::vector<ChatMessage>;
 
     // explicitly and implicitly locks
     auto getUserAllowedRawTime(int32_t chatId, int32_t userId) -> time_t;
