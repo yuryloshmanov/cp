@@ -161,7 +161,7 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
                 std::cout << "update chats received" << std::endl;
                 auto it = findUser(request.message.name);
                 if (it == users.end()) {
-                    request.requestType = RequestType::Error;
+                    request.requestType = RequestType::ClientError;
                     break;
                 }
                 request.message.vector = db.getChatsByTime(it->id, request.message.time);
@@ -177,7 +177,7 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
                     if (it != users.end()) {
                         userIds.push_back(it->id);
                     } else {
-                        request.requestType = RequestType::Error;
+                        request.requestType = RequestType::ClientError;
                         break;
                     }
                 }
@@ -192,7 +192,7 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
             case RequestType::InviteUserToChat: {
                 auto it = findUser(request.message.buffer);
                 if (it == users.end()) {
-                    request.requestType = RequestType::Error;
+                    request.requestType = RequestType::ClientError;
                     break;
                 }
 

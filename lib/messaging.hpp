@@ -12,26 +12,6 @@
 #include "auth.hpp"
 
 
-struct Message {
-    int32_t time{};
-    std::string name{};
-    std::string buffer{};
-    bool flag{};
-    std::vector<std::string> vector{};
-
-
-    Message() = default;
-
-    Message(time_t time, std::string username, std::string data) : time(time), name(std::move(username)),
-                                                                   buffer(std::move(data)) {}
-
-    Message(std::string username, std::string buffer) : name(std::move(username)),
-                                                        buffer(std::move(buffer)) {}
-
-    MSGPACK_DEFINE (time, name, buffer, flag, vector)
-};
-
-
 enum class RequestType {
     SendMessage,
     Update,
@@ -41,20 +21,40 @@ enum class RequestType {
     UpdateChats,
     GetAllMessagesFromChat,
     InviteUserToChat,
-    Error
+    ClientError,
+    ServerError
+};
+
+struct MessageData {
+    int32_t time{};
+    std::string name{};
+    std::string buffer{};
+    bool flag{};
+    std::vector<std::string> vector{};
+
+
+    MessageData() = default;
+
+    MessageData(time_t time, std::string username, std::string data) : time(time), name(std::move(username)),
+                                                                       buffer(std::move(data)) {}
+
+    MessageData(std::string username, std::string buffer) : name(std::move(username)),
+                                                            buffer(std::move(buffer)) {}
+
+    MSGPACK_DEFINE (time, name, buffer, flag, vector)
 };
 
 
 struct Request {
     RequestType requestType{};
     AuthenticationStatus authenticationStatus{};
-    Message message{};
+    MessageData message{};
 
     Request() = default;
 
     explicit Request(RequestType requestType) : requestType(requestType) {}
 
-    Request(RequestType requestType, Message message) : requestType(requestType), message(std::move(message)) {}
+    Request(RequestType requestType, MessageData message) : requestType(requestType), message(std::move(message)) {}
 
     MSGPACK_DEFINE (requestType, authenticationStatus, message);
 };

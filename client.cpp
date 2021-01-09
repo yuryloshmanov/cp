@@ -26,7 +26,7 @@ auto updater() -> void {
     time_t lastChatsUpdateTime{0};
 
     while (true) {
-        auto request = Request(RequestType::UpdateChats, Message(lastChatsUpdateTime, username, ""));
+        auto request = Request(RequestType::UpdateChats, MessageData(lastChatsUpdateTime, username, ""));
         mutex.lock();
         if (!sendRequest(clientSocket, request)) {
             break;
@@ -116,7 +116,7 @@ auto main() -> int {
     }
 
     if (requestType == RequestType::SignIn) {
-        auto request = Request(RequestType::SignIn, Message(username, password));
+        auto request = Request(RequestType::SignIn, MessageData(username, password));
         zmqpp::message signInMessage;
         zmqpp::message responseMessage;
         signInMessage.add_raw(&request, sizeof request);
@@ -133,7 +133,7 @@ auto main() -> int {
             std::cout << "sing in succeeded" << std::endl;
         }
     } else {
-        auto request = Request(RequestType::SignUp, Message(username, password));
+        auto request = Request(RequestType::SignUp, MessageData(username, password));
         zmqpp::message signUpMessage;
         zmqpp::message responseMessage;
         signUpMessage.add_raw(&request, sizeof request);
@@ -170,7 +170,7 @@ auto main() -> int {
             std::getline(std::cin, line);
             std::stringstream ss(line);
 
-            Message msg;
+            MessageData msg;
             msg.name = username;
             msg.buffer = chatName;
             msg.vector.push_back(username);
@@ -185,7 +185,7 @@ auto main() -> int {
             sendRequest(clientSocket, req);
             receiveRequest(clientSocket, req);
             mutex.unlock();
-            if (req.requestType == RequestType::Error) {
+            if (req.requestType == RequestType::ClientError) {
                 std::cout << "error" << std::endl;
             }
         } else if (command == 3) {
@@ -196,7 +196,7 @@ auto main() -> int {
             std::cout << "Enter message:" << std::endl;
             std::cin.ignore();
             std::getline(std::cin, data);
-            Message msg;
+            MessageData msg;
             msg.name = chatName;
             msg.buffer = data;
             auto req = Request(RequestType::SendMessage, msg);
@@ -210,7 +210,7 @@ auto main() -> int {
             std::cout << "Enter chat name: ";
             std::cin >> chatName;
 
-            Message msg;
+            MessageData msg;
             msg.name = chatName;
             auto req = Request(RequestType::GetAllMessagesFromChat, msg);
 
@@ -234,7 +234,7 @@ auto main() -> int {
             std::cout << "Share history with user? (y/n): ";
             std::cin >> value;
 
-            Message msg;
+            MessageData msg;
             msg.name = chatName;
             msg.buffer = user;
 
