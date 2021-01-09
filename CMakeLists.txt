@@ -24,5 +24,5 @@ target_include_directories(server PUBLIC ${LOCAL_INCLUDE_DIR})
 target_include_directories(client PUBLIC ${LOCAL_INCLUDE_DIR})
 
 target_link_libraries(database PUBLIC ${SQLITE})
-target_link_libraries(server PUBLIC networking messaging database ${SODIUM} ${ZMQ} ${ZMQPP})
-target_link_libraries(client PUBLIC networking messaging ${SODIUM} ${ZMQ} ${ZMQPP})
+target_link_libraries(server PUBLIC pthread networking messaging database ${SODIUM} ${ZMQ} ${ZMQPP})
+target_link_libraries(client PUBLIC pthread networking messaging ${SODIUM} ${ZMQ} ${ZMQPP})
