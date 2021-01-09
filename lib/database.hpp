@@ -21,10 +21,10 @@ class Database {
     std::mutex mutex{};
 
     // TODO: add noexcept
-    // doesn't lock
+    // doesn't lock, must be locked outside
     auto prepareStatement(const char *sqlQuery) -> bool;
 
-    // doesn't lock
+    // doesn't lock, must be locked outside
     template<class... Args>
     auto bindStatement(Args... args) -> bool;
 

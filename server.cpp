@@ -14,6 +14,10 @@
 #include "lib/networking.hpp"
 
 
+constexpr int32_t sendTimeout = 10 * 1000;
+constexpr int32_t receiveTimeout = 10 * 1000;
+
+
 class Server {
     Database db{};
 
@@ -70,10 +74,10 @@ auto Server::connectionMonitor() -> void {
 }
 
 
+
 auto Server::attachClient(zmqpp::socket &clientSocket, const std::string &clientEndPoint) -> User {
-    clientSocket.set(zmqpp::socket_option::connect_timeout, 2 * 1000);
-    clientSocket.set(zmqpp::socket_option::receive_timeout, 100 * 1000);
-    clientSocket.set(zmqpp::socket_option::send_timeout, 100 * 1000);
+    clientSocket.set(zmqpp::socket_option::send_timeout, sendTimeout);
+    clientSocket.set(zmqpp::socket_option::receive_timeout, receiveTimeout);
 
     clientSocket.connect(clientEndPoint);
 
@@ -124,73 +128,78 @@ auto Server::attachClient(zmqpp::socket &clientSocket, const std::string &client
 auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
     std::cout << "new clientMonitor started, monitoring " << clientEndPoint << " port" << std::endl;
 
-    zmqpp::socket clientSocket(context, zmqpp::socket_type::reply);
+    try {
+        zmqpp::socket clientSocket(context, zmqpp::socket_type::reply);
 
-    User user = attachClient(clientSocket, clientEndPoint);
+        User user = attachClient(clientSocket, clientEndPoint);
 
-    while (true) {
-        Message request;
-        receiveMessage(clientSocket, request);
-        switch (request.messageType) {
-            case MessageType::CreateMessage: {
-                db.createMessage(request.message.name, user.id, time(nullptr), request.message.buffer);
-                break;
-            }
-            case MessageType::Update: {
-                break;
-            }
-            case MessageType::UpdateChats: {
-                std::cout << "update chats received" << std::endl;
-                auto it = findUser(request.message.name);
-                if (it == users.end()) {
-                    request.messageType = MessageType::ClientError;
+        while (true) {
+            Message request;
+            receiveMessage(clientSocket, request);
+            switch (request.messageType) {
+                case MessageType::CreateMessage: {
+                    db.createMessage(request.message.name, user.id, time(nullptr), request.message.buffer);
                     break;
                 }
-                request.message.vector = db.getChatsByTime(it->id, request.message.time);
-                request.message.time = time(nullptr);
-                break;
-            }
-            case MessageType::CreateChat: {
-                std::vector<int32_t> userIds;
-                userIds.reserve(request.message.vector.size());
-
-                for (const auto &username: request.message.vector) {
-                    auto it = findUser(username);
-                    if (it != users.end()) {
-                        userIds.push_back(it->id);
-                    } else {
+                case MessageType::Update: {
+                    break;
+                }
+                case MessageType::UpdateChats: {
+                    std::cout << "update chats received" << std::endl;
+                    auto it = findUser(request.message.name);
+                    if (it == users.end()) {
                         request.messageType = MessageType::ClientError;
                         break;
                     }
-                }
-
-                db.createChat(request.message.buffer, user.id, userIds);
-                break;
-            }
-            case MessageType::GetAllMessagesFromChat: {
-                request.message.vector = db.getAllMessagesFromChat(request.message.name, user.id);
-                break;
-            }
-            case MessageType::InviteUserToChat: {
-                auto it = findUser(request.message.buffer);
-                if (it == users.end()) {
-                    request.messageType = MessageType::ClientError;
+                    request.message.vector = db.getChatsByTime(it->id, request.message.time);
+                    request.message.time = time(nullptr);
                     break;
                 }
+                case MessageType::CreateChat: {
+                    std::vector<int32_t> userIds;
+                    userIds.reserve(request.message.vector.size());
 
-                db.inviteUserToChat(request.message.name, user.id, it->id, request.message.flag);
-                break;
+                    for (const auto &username: request.message.vector) {
+                        auto it = findUser(username);
+                        if (it != users.end()) {
+                            userIds.push_back(it->id);
+                        } else {
+                            request.messageType = MessageType::ClientError;
+                            break;
+                        }
+                    }
+
+                    db.createChat(request.message.buffer, user.id, userIds);
+                    break;
+                }
+                case MessageType::GetAllMessagesFromChat: {
+                    request.message.vector = db.getAllMessagesFromChat(request.message.name, user.id);
+                    break;
+                }
+                case MessageType::InviteUserToChat: {
+                    auto it = findUser(request.message.buffer);
+                    if (it == users.end()) {
+                        request.messageType = MessageType::ClientError;
+                        break;
+                    }
+
+                    db.inviteUserToChat(request.message.name, user.id, it->id, request.message.flag);
+                    break;
+                }
+                default:
+                    break;
             }
-            default:
-                break;
-        }
 
-        std::cout << "sending request back" << std::endl;
-        if (!sendMessage(clientSocket, request)) {
-            break;
+            std::cout << "sending request back" << std::endl;
+            sendMessage(clientSocket, request);
         }
+    } catch (zmqpp::exception &exception) {
+        std::cerr << "caught zmq exception: " << exception.what() << std::endl;
+    } catch (std::runtime_error &exception) {
+        std::cerr << exception.what() << std::endl;
     }
 
+    std::cout << "client monitor exiting" << std::endl;
 }
 
 

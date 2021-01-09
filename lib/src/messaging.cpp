@@ -1,28 +1,26 @@
 #include "../messaging.hpp"
 
 
-auto sendMessage(zmqpp::socket &socket, const Message &message) -> bool {
+auto sendMessage(zmqpp::socket &socket, const Message &message) -> void {
     zmqpp::message zmqMessage;
     msgpack::sbuffer package;
 
     msgpack::pack(&package, message);
     zmqMessage.add_raw(package.data(), package.size());
 
-    // TODO: NO BLOCK
-    return socket.send(zmqMessage);
+    if (!socket.send(zmqMessage)) {
+        throw std::runtime_error("send timeout");
+    }
 }
 
 
-auto receiveMessage(zmqpp::socket &socket, Message &message) -> bool {
+auto receiveMessage(zmqpp::socket &socket, Message &message) -> void {
     zmqpp::message zmqMessage;
-    // TODO: NO BLOCK
     if (!socket.receive(zmqMessage)) {
-        return false;
+        throw std::runtime_error("receive timeout");
     }
 
     msgpack::unpacked unpackedPackage;
     msgpack::unpack(unpackedPackage, static_cast<const char *>(zmqMessage.raw_data()), zmqMessage.size(0));
     unpackedPackage.get().convert(message);
-
-    return true;
 }

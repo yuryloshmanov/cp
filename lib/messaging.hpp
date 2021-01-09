@@ -60,9 +60,9 @@ struct Message {
 };
 
 
-auto sendMessage(zmqpp::socket &socket, const Message &message) -> bool;
+auto sendMessage(zmqpp::socket &socket, const Message &message) -> void;
 
-auto receiveMessage(zmqpp::socket &socket, Message &message) -> bool;
+auto receiveMessage(zmqpp::socket &socket, Message &message) -> void;
 
 
 MSGPACK_ADD_ENUM(MessageType)
