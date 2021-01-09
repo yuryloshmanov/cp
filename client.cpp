@@ -26,12 +26,12 @@ auto updater() -> void {
     time_t lastChatsUpdateTime{0};
 
     while (true) {
-        auto request = Request(RequestType::UpdateChats, MessageData(lastChatsUpdateTime, username, ""));
+        auto request = Message(MessageType::UpdateChats, MessageData(lastChatsUpdateTime, username, ""));
         mutex.lock();
-        if (!sendRequest(clientSocket, request)) {
+        if (!sendMessage(clientSocket, request)) {
             break;
         }
-        if (!receiveRequest(clientSocket, request)) {
+        if (!receiveMessage(clientSocket, request)) {
             break;
         }
         mutex.unlock();
@@ -91,11 +91,11 @@ auto main() -> int {
     if (!(std::cin >> command)) {
         return 0;
     }
-    RequestType requestType;
+    MessageType requestType;
     if (command == 1) {
-        requestType = RequestType::SignIn;
+        requestType = MessageType::SignIn;
     } else if (command == 2) {
-        requestType = RequestType::SignUp;
+        requestType = MessageType::SignUp;
     } else {
         std::cout << "invalid command" << std::endl;
         return 0;
@@ -115,14 +115,13 @@ auto main() -> int {
         return 1;
     }
 
-    if (requestType == RequestType::SignIn) {
-        auto request = Request(RequestType::SignIn, MessageData(username, password));
-        zmqpp::message signInMessage;
-        zmqpp::message responseMessage;
-        signInMessage.add_raw(&request, sizeof request);
-        clientSocket.send(signInMessage);
-        clientSocket.receive(responseMessage);
-        auto response = *static_cast<Request *>(const_cast<void *>(responseMessage.raw_data()));
+    if (requestType == MessageType::SignIn) {
+        auto request = Message(MessageType::SignIn, MessageData(username, password));
+        sendMessage(clientSocket, request);
+
+        Message response;
+        receiveMessage(clientSocket, response);
+
         if (response.authenticationStatus == AuthenticationStatus::NotExists) {
             std::cout << "user not exists" << std::endl;
             return 0;
@@ -133,13 +132,12 @@ auto main() -> int {
             std::cout << "sing in succeeded" << std::endl;
         }
     } else {
-        auto request = Request(RequestType::SignUp, MessageData(username, password));
-        zmqpp::message signUpMessage;
-        zmqpp::message responseMessage;
-        signUpMessage.add_raw(&request, sizeof request);
-        clientSocket.send(signUpMessage);
-        clientSocket.receive(responseMessage);
-        auto response = *static_cast<Request *>(const_cast<void *>(responseMessage.raw_data()));
+        auto request = Message(MessageType::SignIn, MessageData(username, password));
+        sendMessage(clientSocket, request);
+
+        Message response;
+        receiveMessage(clientSocket, response);
+
         if (response.authenticationStatus == AuthenticationStatus::Exists) {
             std::cout << "user exists" << std::endl;
             return 0;
@@ -148,7 +146,7 @@ auto main() -> int {
         }
     }
 
-    std::thread th(updater);
+    std::thread updaterThread(updater);
     while (true) {
         std::cout << "Choose:\n    1. Show chats\n    2. Create chat\n    3. Send message\n"
                      "    4. Show messages from chat\n    5. Invite user to chat\n"
@@ -170,22 +168,23 @@ auto main() -> int {
             std::getline(std::cin, line);
             std::stringstream ss(line);
 
-            MessageData msg;
-            msg.name = username;
-            msg.buffer = chatName;
-            msg.vector.push_back(username);
+            MessageData msgData;
+            msgData.name = username;
+            msgData.buffer = chatName;
+            msgData.vector.push_back(username);
 
             for (std::string s; ss >> s;) {
-                msg.vector.push_back(s);
+                msgData.vector.push_back(s);
             }
 
-            auto req = Request(RequestType::CreateChat, msg);
+            auto message = Message(MessageType::CreateChat, msgData);
 
             mutex.lock();
-            sendRequest(clientSocket, req);
-            receiveRequest(clientSocket, req);
+            sendMessage(clientSocket, message);
+            receiveMessage(clientSocket, message);
             mutex.unlock();
-            if (req.requestType == RequestType::ClientError) {
+
+            if (message.messageType == MessageType::ClientError) {
                 std::cout << "error" << std::endl;
             }
         } else if (command == 3) {
@@ -196,32 +195,32 @@ auto main() -> int {
             std::cout << "Enter message:" << std::endl;
             std::cin.ignore();
             std::getline(std::cin, data);
-            MessageData msg;
-            msg.name = chatName;
-            msg.buffer = data;
-            auto req = Request(RequestType::SendMessage, msg);
+            MessageData msgData;
+            msgData.name = chatName;
+            msgData.buffer = data;
+            auto message = Message(MessageType::CreateMessage, msgData);
 
             mutex.lock();
-            sendRequest(clientSocket, req);
-            receiveRequest(clientSocket, req);
+            sendMessage(clientSocket, message);
+            receiveMessage(clientSocket, message);
             mutex.unlock();
         } else if (command == 4) {
             std::string chatName;
             std::cout << "Enter chat name: ";
             std::cin >> chatName;
 
-            MessageData msg;
-            msg.name = chatName;
-            auto req = Request(RequestType::GetAllMessagesFromChat, msg);
+            MessageData msgData;
+            msgData.name = chatName;
+            auto message = Message(MessageType::GetAllMessagesFromChat, msgData);
 
 
             mutex.lock();
-            sendRequest(clientSocket, req);
-            receiveRequest(clientSocket, req);
+            sendMessage(clientSocket, message);
+            receiveMessage(clientSocket, message);
             mutex.unlock();
 
-            for (const auto &message: req.message.vector) {
-                std::cout << message << std::endl;
+            for (const auto &messageText: message.message.vector) {
+                std::cout << messageText << std::endl;
             }
         } else if (command == 5) {
             std::string chatName, user;
@@ -234,24 +233,24 @@ auto main() -> int {
             std::cout << "Share history with user? (y/n): ";
             std::cin >> value;
 
-            MessageData msg;
-            msg.name = chatName;
-            msg.buffer = user;
+            MessageData msgData;
+            msgData.name = chatName;
+            msgData.buffer = user;
 
             if (value == "y" || value == "Y") {
-                msg.flag = true;
+                msgData.flag = true;
             } else if (value == "n" || value == "N") {
-                msg.flag = false;
+                msgData.flag = false;
             } else {
                 std::cout << "invalid command" << std::endl;
                 break;
             }
-            auto req = Request(RequestType::InviteUserToChat, msg);
+            auto message = Message(MessageType::InviteUserToChat, msgData);
 
 
             mutex.lock();
-            sendRequest(clientSocket, req);
-            receiveRequest(clientSocket, req);
+            sendMessage(clientSocket, message);
+            receiveMessage(clientSocket, message);
             mutex.unlock();
         } else {
             break;

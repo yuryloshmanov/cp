@@ -23,15 +23,14 @@ class Server {
     std::set<User> users{db.getAllUsers()};
     std::deque<std::thread> threads;
 
+    auto findUser(const std::string &username);
+
     auto connectionMonitor() -> void;
 
-    auto clientMonitor(const std::string &clientEndPoint) -> void;
+    auto attachClient(zmqpp::socket &clientSocket, const std::string &clientEndPoint) -> User;
 
-    auto findUser(const std::string &username) {
-        return std::find_if(users.begin(), users.end(), [&username](auto user) -> bool {
-            return user.username == username;
-        });
-    }
+    // TODO: should be noexcept
+    auto clientMonitor(const std::string &clientEndPoint) -> void;
 
 public:
     static auto get() -> Server &;
@@ -42,14 +41,10 @@ public:
 };
 
 
-auto Server::get() -> Server & {
-    static Server instance;
-    return instance;
-}
-
-
-auto Server::configurePullSocketEndPoint(const std::string &endPoint) -> void {
-    pullSocket.bind(endPoint);
+auto Server::findUser(const std::string &username) {
+    return std::find_if(users.begin(), users.end(), [&username](auto user) -> bool {
+        return user.username == username;
+    });
 }
 
 
@@ -75,100 +70,87 @@ auto Server::connectionMonitor() -> void {
 }
 
 
-auto Server::run() -> void {
-    std::thread pullerThread(&Server::connectionMonitor, &Server::get());
-    pullerThread.join();
-
-    for (auto &thread: threads) {
-        thread.join();
-    }
-}
-
-
-auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
-    std::cout << "new clientMonitor started, monitoring " << clientEndPoint << "port" << std::endl;
-    std::string clientUsername;
-    int32_t clientId;
-
-
-    zmqpp::socket clientSocket(context, zmqpp::socket_type::reply);
-
-    // options
+auto Server::attachClient(zmqpp::socket &clientSocket, const std::string &clientEndPoint) -> User {
     clientSocket.set(zmqpp::socket_option::connect_timeout, 2 * 1000);
     clientSocket.set(zmqpp::socket_option::receive_timeout, 100 * 1000);
     clientSocket.set(zmqpp::socket_option::send_timeout, 100 * 1000);
 
-    try {
-        clientSocket.connect(clientEndPoint);
-    } catch (zmqpp::zmq_internal_exception &exception) {
-        std::cout << exception.what() << std::endl;
-        return;
-    }
-    // authentication
-    zmqpp::message authentication;
-    zmqpp::message authResult;
-    clientSocket.receive(authentication);
-    auto authRequest = *static_cast<Request *>(const_cast<void *>(authentication.raw_data()));
+    clientSocket.connect(clientEndPoint);
 
-    clientUsername = authRequest.message.name;
+    User user;
+    Message authRequest;
+    receiveMessage(clientSocket, authRequest);
+
+    user.username = authRequest.message.name;
 
     AuthenticationStatus status;
-    if (authRequest.requestType == RequestType::SignIn) {
+    if (authRequest.messageType == MessageType::SignIn) {
         if (findUser(authRequest.message.name) == users.end()) {
             status = AuthenticationStatus::NotExists;
         } else {
             status = db.authenticateUser(authRequest.message.name, authRequest.message.buffer);
-            clientId = db.getUserId(clientUsername);
+            user.id = db.getUserId(user.username);
         }
-    } else if (authRequest.requestType == RequestType::SignUp) {
+    } else if (authRequest.messageType == MessageType::SignUp) {
         if (findUser(authRequest.message.name) != users.end()) {
             status = AuthenticationStatus::Exists;
         } else {
             db.createUser(authRequest.message.name, authRequest.message.buffer);
-            clientId = db.getUserId(clientUsername);
-            if (clientId == -1) {
+            user.id = db.getUserId(user.username);
+            if (user.id == -1) {
                 // TODO: handle
             }
             status = AuthenticationStatus::Success;
-            users.insert(User(clientId, clientUsername));
+            users.insert(user);
         }
     } else {
-        return;
+        sendMessage(clientSocket, Message(MessageType::ClientError));
+        throw std::runtime_error("invalid massage type");
     }
 
 
-    authRequest.authenticationStatus = status;
-    authResult.add_raw(&authRequest, sizeof authRequest);
+    Message authResponse;
+    authResponse.authenticationStatus = status;
+    sendMessage(clientSocket, authResponse);
 
-    clientSocket.send(authResult);
     if (status != AuthenticationStatus::Success) {
-        return;
+        throw std::runtime_error("auth error");
     }
 
+    return user;
+}
+
+
+auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
+    std::cout << "new clientMonitor started, monitoring " << clientEndPoint << " port" << std::endl;
+
+    zmqpp::socket clientSocket(context, zmqpp::socket_type::reply);
+
+    User user = attachClient(clientSocket, clientEndPoint);
 
     while (true) {
-        Request request;
-        receiveRequest(clientSocket, request);
-        switch (request.requestType) {
-            case RequestType::SendMessage: {
-                db.createMessage(request.message.name, clientId, time(nullptr), request.message.buffer);
+        Message request;
+        receiveMessage(clientSocket, request);
+        switch (request.messageType) {
+            case MessageType::CreateMessage: {
+                db.createMessage(request.message.name, user.id, time(nullptr), request.message.buffer);
                 break;
             }
-            case RequestType::Update: {
+            case MessageType::Update: {
                 break;
             }
-            case RequestType::UpdateChats: {
+            case MessageType::UpdateChats: {
                 std::cout << "update chats received" << std::endl;
                 auto it = findUser(request.message.name);
                 if (it == users.end()) {
-                    request.requestType = RequestType::ClientError;
+                    request.messageType = MessageType::ClientError;
                     break;
                 }
                 request.message.vector = db.getChatsByTime(it->id, request.message.time);
                 request.message.time = time(nullptr);
                 break;
             }
-            case RequestType::CreateChat: {
+            case MessageType::CreateChat: {
                 std::vector<int32_t> userIds;
                 userIds.reserve(request.message.vector.size());
 
@@ -177,26 +159,26 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
                     if (it != users.end()) {
                         userIds.push_back(it->id);
                     } else {
-                        request.requestType = RequestType::ClientError;
+                        request.messageType = MessageType::ClientError;
                         break;
                     }
                 }
 
-                db.createChat(request.message.buffer, clientId, userIds);
+                db.createChat(request.message.buffer, user.id, userIds);
                 break;
             }
-            case RequestType::GetAllMessagesFromChat: {
-                request.message.vector = db.getAllMessagesFromChat(request.message.name, clientId);
+            case MessageType::GetAllMessagesFromChat: {
+                request.message.vector = db.getAllMessagesFromChat(request.message.name, user.id);
                 break;
             }
-            case RequestType::InviteUserToChat: {
+            case MessageType::InviteUserToChat: {
                 auto it = findUser(request.message.buffer);
                 if (it == users.end()) {
-                    request.requestType = RequestType::ClientError;
+                    request.messageType = MessageType::ClientError;
                     break;
                 }
 
-                db.inviteUserToChat(request.message.name, clientId, it->id, request.message.flag);
+                db.inviteUserToChat(request.message.name, user.id, it->id, request.message.flag);
                 break;
             }
             default:
@@ -204,11 +186,32 @@ auto Server::clientMonitor(const std::string &clientEndPoint) -> void {
         }
 
         std::cout << "sending request back" << std::endl;
-        if (!sendRequest(clientSocket, request)) {
+        if (!sendMessage(clientSocket, request)) {
             break;
         }
     }
 
+}
+
+
+auto Server::get() -> Server & {
+    static Server instance;
+    return instance;
+}
+
+
+auto Server::configurePullSocketEndPoint(const std::string &endPoint) -> void {
+    pullSocket.bind(endPoint);
+}
+
+
+auto Server::run() -> void {
+    std::thread pullerThread(&Server::connectionMonitor, &Server::get());
+    pullerThread.join();
+
+    for (auto &thread: threads) {
+        thread.join();
+    }
 }
 
 

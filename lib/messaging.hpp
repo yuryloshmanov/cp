@@ -12,8 +12,8 @@
 #include "auth.hpp"
 
 
-enum class RequestType {
-    SendMessage,
+enum class MessageType {
+    CreateMessage,
     Update,
     SignIn,
     SignUp,
@@ -45,27 +45,27 @@ struct MessageData {
 };
 
 
-struct Request {
-    RequestType requestType{};
+struct Message {
+    MessageType messageType{};
     AuthenticationStatus authenticationStatus{};
     MessageData message{};
 
-    Request() = default;
+    Message() = default;
 
-    explicit Request(RequestType requestType) : requestType(requestType) {}
+    explicit Message(MessageType messageType) : messageType(messageType) {}
 
-    Request(RequestType requestType, MessageData message) : requestType(requestType), message(std::move(message)) {}
+    Message(MessageType messageType, MessageData message) : messageType(messageType), message(std::move(message)) {}
 
-    MSGPACK_DEFINE (requestType, authenticationStatus, message);
+    MSGPACK_DEFINE (messageType, authenticationStatus, message);
 };
 
 
-auto sendRequest(zmqpp::socket &socket, const Request &request) -> bool;
+auto sendMessage(zmqpp::socket &socket, const Message &message) -> bool;
 
-auto receiveRequest(zmqpp::socket &socket, Request &request) -> bool;
+auto receiveMessage(zmqpp::socket &socket, Message &message) -> bool;
 
 
-MSGPACK_ADD_ENUM(RequestType)
+MSGPACK_ADD_ENUM(MessageType)
 MSGPACK_ADD_ENUM(AuthenticationStatus)
 
 
