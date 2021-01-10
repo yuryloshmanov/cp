@@ -81,7 +81,7 @@ auto Database::createChat(
 
     const auto sqlChatsQuery = "INSERT INTO Chats(Name, AdminId, CreationRawTime) VALUES(?, ?, ?);";
 
-    std::lock_guard lockGuard(mutex);
+    mutex.lock();
     if (!prepareStatement(sqlChatsQuery)) {
         throw std::runtime_error("sqlite3_prepare_v2 error");
     }
@@ -94,7 +94,10 @@ auto Database::createChat(
         throw std::runtime_error("sqlite3_step error");
     }
 
+    mutex.unlock();
     const auto chatId = getChatId(chatName);
+    mutex.lock();
+
     for (const auto &userId : userIds) {
         const auto sqlChatsInfoQuery = "INSERT INTO ChatsInfo(ChatId, UserId, AllowedRawTime) VALUES(?, ?, ?);";
         if (userId == -1) {
@@ -111,6 +114,8 @@ auto Database::createChat(
             throw std::runtime_error("sqlite3_step error");
         }
     }
+
+    mutex.unlock();
 
     return true;
 }

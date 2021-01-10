@@ -33,16 +33,21 @@ auto updater(zmqpp::socket &clientSocket) -> void {
 
     try {
         while (true) {
-            auto request = Message(MessageType::UpdateChats, MessageData(lastChatsUpdateTime, username, ""));
+            auto message = Message(MessageType::UpdateChats, MessageData(lastChatsUpdateTime, username, ""));
             mutex.lock();
-            sendMessage(clientSocket, request);
-            receiveMessage(clientSocket, request);
+            sendMessage(clientSocket, message);
+            receiveMessage(clientSocket, message);
             mutex.unlock();
 
-            for (const auto &chat: request.data.vector) {
+            for (const auto &chat: message.data.vector) {
                 chats.push_back(chat);
             }
-            lastChatsUpdateTime = request.data.time;
+
+            if (message.data.vector.empty()) {
+                lastChatsUpdateTime == 0 ? lastChatsUpdateTime = 0 : lastChatsUpdateTime = message.data.time;
+            } else {
+                lastChatsUpdateTime = message.data.time;
+            }
 
             std::this_thread::sleep_for(std::chrono::seconds(2));
         }

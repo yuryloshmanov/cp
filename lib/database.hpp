@@ -47,7 +47,7 @@ class Database {
     auto isChatExists(const std::string &chatName) -> bool;
 
     // doesn't lock, must be locked outside
-    auto getUsername(const int id) -> std::string;
+    auto getUsername(int id) -> std::string;
 
 public:
     Database();

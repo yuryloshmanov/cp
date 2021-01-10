@@ -100,7 +100,7 @@ auto Server::attachClient(zmqpp::socket &clientSocket, const std::string &client
             db.createUser(authRequest.data.name, authRequest.data.buffer);
             user.id = db.getUserId(user.username);
             if (user.id == -1) {
-                // TODO: handle
+                throw std::runtime_error("unexpected createUser result");
             }
             status = AuthenticationStatus::Success;
             users.insert(user);
@@ -200,8 +200,6 @@ auto Server::clientMonitor(const std::string &clientEndPoint) noexcept -> void {
                             sendMessage(clientSocket, Message(MessageType::ServerError));
                             continue;
                         }
-                    } else {
-                        continue;
                     }
                     break;
                 }
