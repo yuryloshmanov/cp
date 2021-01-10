@@ -129,7 +129,7 @@ auto connectToServer(zmqpp::socket &serverSocket, zmqpp::socket &clientSocket) -
             std::cout << "sing in succeeded" << std::endl;
         }
     } else {
-        auto request = Message(MessageType::SignIn, MessageData(username, password));
+        auto request = Message(MessageType::SignUp, MessageData(username, password));
         sendMessage(clientSocket, request);
 
         Message response;
@@ -155,8 +155,11 @@ auto main() -> int {
         std::thread updaterThread(updater, std::ref(clientSocket));
         int32_t command;
         while (true) {
-            std::cout << "Choose:\n    1. Show chats\n    2. Create chat\n    3. Send message\n"
-                         "    4. Show messages from chat\n    5. Invite user to chat\n"
+            std::cout << "Choose:\n"
+                         "    1. Show chats\n"
+                         "    2. Create chat\n"
+                         "    3. Enter chat\n"
+                         "    4. Quit\n"
                          "Enter num: ";
             std::cin >> command;
 
@@ -198,91 +201,106 @@ auto main() -> int {
                 }
             } else if (command == 3) {
                 std::string chatName;
-                std::string data;
-                std::cout << "Enter chat name: ";
-                std::cin >> chatName;
-                std::cout << "Enter message:" << std::endl;
-                std::cin.ignore();
-                std::getline(std::cin, data);
-                MessageData msgData;
-                msgData.name = chatName;
-                msgData.buffer = data;
-                auto message = Message(MessageType::CreateMessage, msgData);
-
-                mutex.lock();
-                sendMessage(clientSocket, message);
-                receiveMessage(clientSocket, message);
-                mutex.unlock();
-
-                if (message.type == MessageType::ClientError) {
-                    std::cout << RED << message.data.buffer << RESET << std::endl;
-                } else if (message.type == MessageType::ServerError) {
-                    std::cout << RED << "Server error" << RESET << std::endl;
-                }
-            } else if (command == 4) {
-                std::string chatName;
                 std::cout << "Enter chat name: ";
                 std::cin >> chatName;
 
-                MessageData msgData;
-                msgData.name = chatName;
-                auto message = Message(MessageType::GetAllMessagesFromChat, msgData);
+                while (true) {
+                    std::cout << "Choose:\n"
+                                 "    1. Send message\n"
+                                 "    2. Show messages\n"
+                                 "    3. Invite user\n"
+                                 "    4. Exit menu\n"
+                                 "Enter num: ";
+                    std::cin >> command;
+
+                    if (command == 1) {
+                        std::string data;
+                        std::cout << "Enter message:" << std::endl;
+                        std::cin.ignore();
+                        std::getline(std::cin, data);
+
+                        MessageData msgData;
+                        msgData.name = chatName;
+                        msgData.buffer = data;
+                        auto message = Message(MessageType::CreateMessage, msgData);
+
+                        mutex.lock();
+                        sendMessage(clientSocket, message);
+                        receiveMessage(clientSocket, message);
+                        mutex.unlock();
+
+                        if (message.type == MessageType::ClientError) {
+                            std::cout << RED << message.data.buffer << RESET << std::endl;
+                        } else if (message.type == MessageType::ServerError) {
+                            std::cout << RED << "Server error" << RESET << std::endl;
+                        }
+                    } else if (command == 2) {
+                        MessageData msgData;
+                        msgData.name = chatName;
+                        auto message = Message(MessageType::GetAllMessagesFromChat, msgData);
 
 
-                mutex.lock();
-                sendMessage(clientSocket, message);
-                receiveMessage(clientSocket, message);
-                mutex.unlock();
-                if (message.type == MessageType::ClientError) {
-                    std::cout << RED << message.data.buffer << RESET << std::endl;
-                } else if (message.type == MessageType::ServerError) {
-                    std::cout << "Server error" << std::endl;
-                } else {
-                    for (const auto &chatMessage: message.data.chatMessages) {
-                        std::cout << chatMessage << std::endl;
+                        mutex.lock();
+                        sendMessage(clientSocket, message);
+                        receiveMessage(clientSocket, message);
+                        mutex.unlock();
+                        if (message.type == MessageType::ClientError) {
+                            std::cout << RED << message.data.buffer << RESET << std::endl;
+                        } else if (message.type == MessageType::ServerError) {
+                            std::cout << "Server error" << std::endl;
+                        } else {
+                            for (const auto &chatMessage: message.data.chatMessages) {
+                                std::cout << chatMessage << std::endl;
+                            }
+                        }
+                    } else if (command == 3) {
+                        std::string user;
+                        std::cout << "Enter username: ";
+                        std::cin >> user;
+
+                        std::string value;
+                        std::cout << "Share history with user? (y/n): ";
+                        std::cin >> value;
+
+                        MessageData msgData;
+                        msgData.name = chatName;
+                        msgData.buffer = user;
+
+                        if (value == "y" || value == "Y") {
+                            msgData.flag = true;
+                        } else if (value == "n" || value == "N") {
+                            msgData.flag = false;
+                        } else {
+                            std::cout << "invalid command" << std::endl;
+                            break;
+                        }
+                        auto message = Message(MessageType::InviteUserToChat, msgData);
+
+
+                        mutex.lock();
+                        sendMessage(clientSocket, message);
+                        receiveMessage(clientSocket, message);
+                        mutex.unlock();
+
+                        if (message.type == MessageType::ClientError) {
+                            std::cout << RED << message.data.buffer << RESET << std::endl;
+                        } else if (message.type == MessageType::ServerError) {
+                            std::cout << RED << "Server error" << RESET << std::endl;
+                        }
+                    } else if (command == 4) {
+                        break;
+                    } else {
+                        std::cout << "Invalid command" << std::endl;
                     }
                 }
-            } else if (command == 5) {
-                std::string chatName, user;
-                std::cout << "Enter chat name: ";
-                std::cin >> chatName;
-                std::cout << "Enter username: ";
-                std::cin >> user;
-
-                std::string value;
-                std::cout << "Share history with user? (y/n): ";
-                std::cin >> value;
-
-                MessageData msgData;
-                msgData.name = chatName;
-                msgData.buffer = user;
-
-                if (value == "y" || value == "Y") {
-                    msgData.flag = true;
-                } else if (value == "n" || value == "N") {
-                    msgData.flag = false;
-                } else {
-                    std::cout << "invalid command" << std::endl;
-                    break;
-                }
-                auto message = Message(MessageType::InviteUserToChat, msgData);
-
-
-                mutex.lock();
-                sendMessage(clientSocket, message);
-                receiveMessage(clientSocket, message);
-                mutex.unlock();
-
-                if (message.type == MessageType::ClientError) {
-                    std::cout << RED << message.data.buffer << RESET << std::endl;
-                } else if (message.type == MessageType::ServerError) {
-                    std::cout << RED << "Server error" << RESET << std::endl;
-                }
-            } else {
+            } else if (command == 4) {
                 break;
+            } else {
+                std::cout << "Invalid command" << std::endl;
             }
 
         }
+
     } catch (zmqpp::exception &exception) {
         std::cerr << "caught zmq exception: " << exception.what() << std::endl;
         exit(1);
@@ -290,5 +308,6 @@ auto main() -> int {
         std::cerr << exception.what() << std::endl;
         exit(2);
     }
+
     return 0;
 }
