@@ -37,6 +37,8 @@ struct MessageData {
 
     MessageData() = default;
 
+    MessageData(std::string buffer) : buffer(std::move(buffer)) {}
+
     MessageData(time_t time, std::string username, std::string data) : time(time), name(std::move(username)),
                                                                        buffer(std::move(data)) {}
 
@@ -48,17 +50,17 @@ struct MessageData {
 
 
 struct Message {
-    MessageType messageType{};
+    MessageType type{};
     AuthenticationStatus authenticationStatus{};
-    MessageData message{};
+    MessageData data{};
 
     Message() = default;
 
-    explicit Message(MessageType messageType) : messageType(messageType) {}
+    explicit Message(MessageType messageType) : type(messageType) {}
 
-    Message(MessageType messageType, MessageData message) : messageType(messageType), message(std::move(message)) {}
+    Message(MessageType messageType, MessageData message) : type(messageType), data(std::move(message)) {}
 
-    MSGPACK_DEFINE (messageType, authenticationStatus, message);
+    MSGPACK_DEFINE (type, authenticationStatus, data);
 };
 
 

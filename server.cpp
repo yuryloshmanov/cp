@@ -83,21 +83,21 @@ auto Server::attachClient(zmqpp::socket &clientSocket, const std::string &client
     Message authRequest;
     receiveMessage(clientSocket, authRequest);
 
-    user.username = authRequest.message.name;
+    user.username = authRequest.data.name;
 
     AuthenticationStatus status;
-    if (authRequest.messageType == MessageType::SignIn) {
-        if (findUser(authRequest.message.name) == users.end()) {
+    if (authRequest.type == MessageType::SignIn) {
+        if (findUser(authRequest.data.name) == users.end()) {
             status = AuthenticationStatus::NotExists;
         } else {
-            status = db.authenticateUser(authRequest.message.name, authRequest.message.buffer);
+            status = db.authenticateUser(authRequest.data.name, authRequest.data.buffer);
             user.id = db.getUserId(user.username);
         }
-    } else if (authRequest.messageType == MessageType::SignUp) {
-        if (findUser(authRequest.message.name) != users.end()) {
+    } else if (authRequest.type == MessageType::SignUp) {
+        if (findUser(authRequest.data.name) != users.end()) {
             status = AuthenticationStatus::Exists;
         } else {
-            db.createUser(authRequest.message.name, authRequest.message.buffer);
+            db.createUser(authRequest.data.name, authRequest.data.buffer);
             user.id = db.getUserId(user.username);
             if (user.id == -1) {
                 // TODO: handle
@@ -132,12 +132,16 @@ auto Server::clientMonitor(const std::string &clientEndPoint) noexcept -> void {
         User user = attachClient(clientSocket, clientEndPoint);
 
         while (true) {
-            Message request;
-            receiveMessage(clientSocket, request);
-            switch (request.messageType) {
+            Message message;
+            receiveMessage(clientSocket, message);
+            switch (message.type) {
                 case MessageType::CreateMessage: {
                     try {
-                        db.createMessage(request.message.name, user.id, time(nullptr), request.message.buffer);
+                        if (!db.createMessage(message.data.name, user.id, time(nullptr), message.data.buffer)) {
+                            sendMessage(clientSocket, Message(MessageType::ClientError,
+                                                              "Chat " + message.data.buffer + " doesn't exists"));
+                            continue;
+                        }
                     } catch (std::runtime_error &exception) {
                         std::cerr << exception.what() << std::endl;
                         sendMessage(clientSocket, Message(MessageType::ServerError));
@@ -150,64 +154,80 @@ auto Server::clientMonitor(const std::string &clientEndPoint) noexcept -> void {
                 }
                 case MessageType::UpdateChats: {
                     std::cout << "update chats received" << std::endl;
-                    auto it = findUser(request.message.name);
+                    auto it = findUser(message.data.name);
                     if (it == users.end()) {
-                        request.messageType = MessageType::ClientError;
+                        message.type = MessageType::ClientError;
                         break;
                     }
 
                     try {
-                        request.message.vector = db.getChatsByTime(it->id, request.message.time);
+                        message.data.vector = db.getChatsByTime(it->id, message.data.time);
                     } catch (std::runtime_error &exception) {
                         std::cerr << exception.what() << std::endl;
                         sendMessage(clientSocket, Message(MessageType::ServerError));
                         continue;
                     }
-                    request.message.time = time(nullptr);
+                    message.data.time = time(nullptr);
                     break;
                 }
                 case MessageType::CreateChat: {
                     std::vector<int32_t> userIds;
-                    userIds.reserve(request.message.vector.size());
+                    userIds.reserve(message.data.vector.size());
 
-                    for (const auto &username: request.message.vector) {
+                    auto flag = false;
+                    for (const auto &username: message.data.vector) {
                         auto it = findUser(username);
                         if (it != users.end()) {
                             userIds.push_back(it->id);
                         } else {
-                            request.messageType = MessageType::ClientError;
+                            message = Message(MessageType::ClientError,
+                                              MessageData("User " + username + " doesn't exists"));
+                            sendMessage(clientSocket, message);
+                            flag = true;
                             break;
                         }
                     }
 
-                    try {
-                        db.createChat(request.message.buffer, user.id, userIds);
-                    } catch (std::runtime_error &exception) {
-                        std::cerr << exception.what() << std::endl;
-                        sendMessage(clientSocket, Message(MessageType::ServerError));
+                    if (!flag) {
+                        try {
+                            if (!db.createChat(message.data.buffer, user.id, userIds)) {
+                                sendMessage(clientSocket,
+                                            Message(MessageType::ClientError, MessageData("Chat exists")));
+                                continue;
+                            }
+                        } catch (std::runtime_error &exception) {
+                            std::cerr << exception.what() << std::endl;
+                            sendMessage(clientSocket, Message(MessageType::ServerError));
+                            continue;
+                        }
+                    } else {
                         continue;
                     }
                     break;
                 }
                 case MessageType::GetAllMessagesFromChat: {
                     try {
-                        request.message.chatMessages = db.getAllMessagesFromChat(request.message.name, user.id);
-                    } catch (std::runtime_error &exception) {
+                        message.data.chatMessages = db.getAllMessagesFromChat(message.data.name, user.id);
+                    } catch (std::logic_error &exception) {
                         std::cerr << exception.what() << std::endl;
+                        sendMessage(clientSocket, Message(MessageType::ClientError, MessageData(
+                                "Chat " + message.data.name + " doesn't exists")));
+                        continue;
+                    } catch (std::runtime_error &) {
                         sendMessage(clientSocket, Message(MessageType::ServerError));
                         continue;
                     }
                     break;
                 }
                 case MessageType::InviteUserToChat: {
-                    auto it = findUser(request.message.buffer);
+                    auto it = findUser(message.data.buffer);
                     if (it == users.end()) {
-                        request.messageType = MessageType::ClientError;
+                        message.type = MessageType::ClientError;
                         break;
                     }
 
                     try {
-                        db.inviteUserToChat(request.message.name, user.id, it->id, request.message.flag);
+                        db.inviteUserToChat(message.data.name, user.id, it->id, message.data.flag);
                     } catch (std::runtime_error &exception) {
                         std::cerr << exception.what() << std::endl;
                         sendMessage(clientSocket, Message(MessageType::ServerError));
@@ -220,7 +240,7 @@ auto Server::clientMonitor(const std::string &clientEndPoint) noexcept -> void {
             }
 
             std::cout << "sending request back" << std::endl;
-            sendMessage(clientSocket, request);
+            sendMessage(clientSocket, message);
         }
     } catch (zmqpp::exception &exception) {
         std::cerr << "caught zmq exception: " << exception.what() << std::endl;

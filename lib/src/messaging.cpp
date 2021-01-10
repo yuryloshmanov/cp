@@ -24,3 +24,10 @@ auto receiveMessage(zmqpp::socket &socket, Message &message) -> void {
     msgpack::unpack(unpackedPackage, static_cast<const char *>(zmqMessage.raw_data()), zmqMessage.size(0));
     unpackedPackage.get().convert(message);
 }
+
+
+auto receiveMessage(zmqpp::socket &socket) -> Message {
+    Message message;
+    receiveMessage(socket, message);
+    return message;
+}

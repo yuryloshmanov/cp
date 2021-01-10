@@ -13,6 +13,10 @@
 #include "lib/networking.hpp"
 
 
+#define RESET   "\033[0m"
+#define RED     "\033[31m"
+
+
 std::string username;
 
 
@@ -35,10 +39,10 @@ auto updater(zmqpp::socket &clientSocket) -> void {
             receiveMessage(clientSocket, request);
             mutex.unlock();
 
-            for (const auto &chat: request.message.vector) {
+            for (const auto &chat: request.data.vector) {
                 chats.push_back(chat);
             }
-            lastChatsUpdateTime = request.message.time;
+            lastChatsUpdateTime = request.data.time;
 
             std::this_thread::sleep_for(std::chrono::seconds(2));
         }
@@ -187,8 +191,10 @@ auto main() -> int {
                 receiveMessage(clientSocket, message);
                 mutex.unlock();
 
-                if (message.messageType == MessageType::ClientError) {
-                    std::cout << "error" << std::endl;
+                if (message.type == MessageType::ClientError) {
+                    std::cout << RED << message.data.buffer << RESET << std::endl;
+                } else if (message.type == MessageType::ServerError) {
+                    std::cout << RED << "Server error" << RESET << std::endl;
                 }
             } else if (command == 3) {
                 std::string chatName;
@@ -207,6 +213,12 @@ auto main() -> int {
                 sendMessage(clientSocket, message);
                 receiveMessage(clientSocket, message);
                 mutex.unlock();
+
+                if (message.type == MessageType::ClientError) {
+                    std::cout << RED << message.data.buffer << RESET << std::endl;
+                } else if (message.type == MessageType::ServerError) {
+                    std::cout << RED << "Server error" << RESET << std::endl;
+                }
             } else if (command == 4) {
                 std::string chatName;
                 std::cout << "Enter chat name: ";
@@ -221,12 +233,14 @@ auto main() -> int {
                 sendMessage(clientSocket, message);
                 receiveMessage(clientSocket, message);
                 mutex.unlock();
-
-//                for (const auto &messageText: message.message.vector) {
-//                    std::cout << messageText << std::endl;
-//                }
-                for (const auto &chatMessage: message.message.chatMessages) {
-                    std::cout << chatMessage << std::endl;
+                if (message.type == MessageType::ClientError) {
+                    std::cout << RED << message.data.buffer << RESET << std::endl;
+                } else if (message.type == MessageType::ServerError) {
+                    std::cout << "Server error" << std::endl;
+                } else {
+                    for (const auto &chatMessage: message.data.chatMessages) {
+                        std::cout << chatMessage << std::endl;
+                    }
                 }
             } else if (command == 5) {
                 std::string chatName, user;
@@ -258,6 +272,12 @@ auto main() -> int {
                 sendMessage(clientSocket, message);
                 receiveMessage(clientSocket, message);
                 mutex.unlock();
+
+                if (message.type == MessageType::ClientError) {
+                    std::cout << RED << message.data.buffer << RESET << std::endl;
+                } else if (message.type == MessageType::ServerError) {
+                    std::cout << RED << "Server error" << RESET << std::endl;
+                }
             } else {
                 break;
             }
